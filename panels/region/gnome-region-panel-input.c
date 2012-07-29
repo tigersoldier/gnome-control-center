@@ -95,6 +95,7 @@ static void       fcitx_imlist_changed_cb      (FcitxInputMethod *fcitx_im,
 static gint       fcitx_get_im_index           (GtkTreeModel     *model,
                                                 GtkTreeIter      *iter);
 static gint       fcitx_get_selected_im_index  (GtkBuilder       *builder);
+static void       fcitx_remove_selected_im     (GtkBuilder       *builder);
 static void       fcitx_move_selected_im_up    (GtkBuilder       *builder);
 static void       fcitx_move_selected_im_down  (GtkBuilder       *builder);
 static gboolean   fcitx_tree_modle_foreach_cb  (GtkTreeModel     *model,
@@ -264,6 +265,18 @@ fcitx_get_selected_im_index (GtkBuilder *builder)
   if (get_selected_iter (builder, &model, &iter) == FALSE)
     return -1;
   return fcitx_get_im_index (model, &iter);
+}
+
+static void
+fcitx_remove_selected_im (GtkBuilder *builder)
+{
+  gint index = fcitx_get_selected_im_index (builder);
+  FcitxIMItem *imitem;
+  if (index < 0)
+    return;
+  imitem = g_ptr_array_index (fcitx_imlist, index);
+  imitem->enable = FALSE;
+  fcitx_input_method_set_imlist (fcitx_im, fcitx_imlist);
 }
 
 static void
@@ -874,6 +887,14 @@ remove_selected_input (GtkButton *button, gpointer data)
   GtkTreePath *path;
 
   g_debug ("remove selected input source");
+
+#ifdef HAVE_FCITX
+  if (fcitx_is_connected ())
+    {
+      fcitx_remove_selected_im (builder);
+      return;
+    }
+#endif
 
   if (get_selected_iter (builder, &model, &iter) == FALSE)
     return;
