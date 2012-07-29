@@ -94,6 +94,8 @@ static void       fcitx_imlist_changed_cb      (FcitxInputMethod *fcitx_im,
                                                 GtkBuilder       *builder);
 static gint       fcitx_get_im_index           (GtkTreeModel     *model,
                                                 GtkTreeIter      *iter);
+static FcitxIMItem *fcitx_get_im               (GtkTreeModel     *model,
+                                                GtkTreeIter      *iter);
 static gint       fcitx_get_selected_im_index  (GtkBuilder       *builder);
 static void       fcitx_remove_selected_im     (GtkBuilder       *builder);
 static void       fcitx_move_selected_im_up    (GtkBuilder       *builder);
@@ -103,6 +105,11 @@ static gboolean   fcitx_tree_modle_foreach_cb  (GtkTreeModel     *model,
                                                 GtkTreeIter      *iter,
                                                 gpointer          data);
 static gboolean   fcitx_is_connected           (void);
+static gboolean   fcitx_is_current_language    (const gchar      *langcode);
+static gint       fcitx_compare_im             (GtkTreeModel     *model,
+                                                GtkTreeIter      *a,
+                                                GtkTreeIter      *b,
+                                                gpointer          user_data);
 #endif  /* HAVE_FCITX */
 
 static gboolean   get_selected_iter            (GtkBuilder       *builder,
@@ -257,6 +264,16 @@ fcitx_get_im_index (GtkTreeModel *model,
   return index;
 }
 
+static FcitxIMItem *
+fcitx_get_im (GtkTreeModel *model,
+              GtkTreeIter  *iter)
+{
+  gint index = fcitx_get_im_index (model, iter);
+  if (index < 0)
+    return NULL;
+  return g_ptr_array_index (fcitx_imlist, index);
+}
+
 static gint
 fcitx_get_selected_im_index (GtkBuilder *builder)
 {
@@ -326,6 +343,51 @@ fcitx_move_selected_im_down (GtkBuilder *builder)
       fcitx_input_method_set_imlist (fcitx_im, fcitx_imlist);
     }
 }
+
+static gboolean
+fcitx_is_current_language (const gchar *langcode)
+{
+  if (!langcode)
+    return FALSE;
+  const char * const * current_lang;
+  current_lang = g_get_language_names ();
+  return (strncmp (langcode, current_lang[0], 2) == 0);
+}
+
+static gint
+fcitx_compare_im (GtkTreeModel *model,
+                  GtkTreeIter  *a,
+                  GtkTreeIter  *b,
+                  gpointer      user_data)
+{
+  FcitxIMItem *ima, *imb;
+  gchar *namea, *nameb;
+  gint ret;
+  if (fcitx_is_connected ())
+    {
+      ima = fcitx_get_im (model, a);
+      imb = fcitx_get_im (model, b);
+      if (ima != NULL && imb != NULL)
+        {
+          if (fcitx_is_current_language (ima->langcode) !=
+              fcitx_is_current_language (imb->langcode))
+          {
+            if (fcitx_is_current_language (ima->langcode))
+              return -1;
+            else
+              return 1;
+          }
+          return g_strcmp0 (ima->name, imb->name);
+        }
+    }
+  gtk_tree_model_get (model, a, NAME_COLUMN, &namea, -1);
+  gtk_tree_model_get (model, b, NAME_COLUMN, &nameb, -1);
+  ret = g_strcmp0 (namea, nameb);
+  g_free (namea);
+  g_free (nameb);
+  return ret;
+}
+
 #endif  /* HAVE_FCITX */
 
 #ifdef HAVE_IBUS
@@ -484,6 +546,29 @@ populate_model (GtkListStore *store,
   const gchar *name;
   GList *sources, *tmp;
   gchar *source_id = NULL;
+#ifdef HAVE_FCITX
+  if (fcitx_is_connected ())
+    {
+      guint i;
+      FcitxIMItem *imitem;
+      gchar *id;
+      for (i = 0; i < fcitx_imlist->len; i++)
+        {
+          imitem = g_ptr_array_index (fcitx_imlist, i);
+          if (imitem->enable)
+            continue;
+          gtk_list_store_append (store, &iter);
+          id = g_strdup_printf ("%u", i);
+          gtk_list_store_set (store, &iter,
+                              NAME_COLUMN, imitem->name,
+                              TYPE_COLUMN, INPUT_SOURCE_TYPE_FCITX,
+                              ID_COLUMN, id,
+                              -1);
+          g_free (id);
+        }
+      return;
+    }
+#endif
 
   active_sources_table = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
 
@@ -817,12 +902,33 @@ chooser_response (GtkWidget *chooser, gint response_id, gpointer data)
           gchar *type;
           gchar *id;
           GDesktopAppInfo *app_info = NULL;
-
           gtk_tree_model_get (model, &iter,
                               NAME_COLUMN, &name,
                               TYPE_COLUMN, &type,
                               ID_COLUMN, &id,
                               -1);
+
+#ifdef HAVE_FCITX
+          if (g_str_equal (type, INPUT_SOURCE_TYPE_FCITX) || fcitx_is_connected ())
+            {
+              gint index = fcitx_get_im_index (model, &iter);
+              FcitxIMItem *imitem;
+              if (index >=0 && fcitx_imlist)
+                {
+                  imitem = g_ptr_array_index (fcitx_imlist, index);
+                  g_ptr_array_set_free_func (fcitx_imlist, NULL);
+                  g_ptr_array_remove_index (fcitx_imlist, index);
+                  g_ptr_array_add (fcitx_imlist, imitem);
+                  g_ptr_array_set_free_func (fcitx_imlist, fcitx_im_item_free);
+                  imitem->enable = TRUE;
+                  fcitx_input_method_set_imlist (fcitx_im, fcitx_imlist);
+                  g_clear_pointer (&fcitx_selected_im, g_free);
+                  fcitx_selected_im = g_strdup (imitem->unique_name);
+                }
+              gtk_widget_destroy (GTK_WIDGET (chooser));
+              return;
+            }
+#endif  /* HAVE_FCITX */
 
 #ifdef HAVE_IBUS
           if (g_str_equal (type, INPUT_SOURCE_TYPE_IBUS))
@@ -1489,6 +1595,14 @@ input_chooser_new (GtkWindow    *main_window,
 
   gtk_tree_sortable_set_sort_column_id (GTK_TREE_SORTABLE (model),
                                         NAME_COLUMN, GTK_SORT_ASCENDING);
+
+#ifdef HAVE_FCITX
+  gtk_tree_sortable_set_sort_func (GTK_TREE_SORTABLE (model),
+                                   NAME_COLUMN,
+                                   fcitx_compare_im,
+                                   NULL,
+                                   NULL);
+#endif
 
   gtk_tree_model_filter_set_visible_func (filtered_model,
                                           filter_func,
