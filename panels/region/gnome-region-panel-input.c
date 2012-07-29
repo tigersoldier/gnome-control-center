@@ -82,10 +82,25 @@ static const gchar *supported_ibus_engines[] = {
 
 static FcitxInputMethod *fcitx_im = NULL;
 static GPtrArray *fcitx_imlist = NULL;
+static gchar *fcitx_selected_im = NULL;
+
+typedef struct {
+  GtkTreeView *treeview;
+  gchar *unique_name;
+} FcitxForeachContext;
 
 static void       clear_fcitx                  (void);
 static void       fcitx_imlist_changed_cb      (FcitxInputMethod *fcitx_im,
                                                 GtkBuilder       *builder);
+static gint       fcitx_get_im_index           (GtkTreeModel     *model,
+                                                GtkTreeIter      *iter);
+static gint       fcitx_get_selected_im_index  (GtkBuilder       *builder);
+static void       fcitx_move_selected_im_up    (GtkBuilder       *builder);
+static void       fcitx_move_selected_im_down  (GtkBuilder       *builder);
+static gboolean   fcitx_tree_modle_foreach_cb  (GtkTreeModel     *model,
+                                                GtkTreePath      *path,
+                                                GtkTreeIter      *iter,
+                                                gpointer          data);
 static gboolean   fcitx_is_connected           (void);
 #endif  /* HAVE_FCITX */
 
@@ -118,6 +133,7 @@ clear_fcitx (void)
       g_ptr_array_free (fcitx_imlist, TRUE);
       fcitx_imlist = NULL;
     }
+  g_clear_pointer (&fcitx_selected_im, g_free);
 }
 
 static gboolean
@@ -134,6 +150,29 @@ fcitx_is_connected (void)
   return connected;
 }
 
+static gboolean
+fcitx_tree_modle_foreach_cb  (GtkTreeModel *model,
+                              GtkTreePath  *path,
+                              GtkTreeIter  *iter,
+                              gpointer      data)
+{
+  FcitxIMItem *imitem;
+  GtkTreeSelection *selection;
+  FcitxForeachContext *context;
+  gint index = fcitx_get_im_index (model, iter);
+  if (index < 0)
+    return FALSE;
+  context = data;
+  imitem = g_ptr_array_index (fcitx_imlist, index);
+  if (g_str_equal (context->unique_name, imitem->unique_name))
+    {
+      selection = gtk_tree_view_get_selection (context->treeview);
+      gtk_tree_selection_select_iter (selection, iter);
+      return TRUE;
+    }
+  return FALSE;
+}
+
 static void
 fcitx_imlist_changed_cb (FcitxInputMethod *fcitx_im,
                          GtkBuilder       *builder)
@@ -141,8 +180,29 @@ fcitx_imlist_changed_cb (FcitxInputMethod *fcitx_im,
   GtkWidget *treeview;
   GtkTreeModel *store;
   GtkTreePath *path;
+  gint index;
+  FcitxIMItem *imitem;
   GtkTreeIter iter;
   GtkTreeModel *model;
+  FcitxForeachContext foreach_context;
+
+  treeview = WID("active_input_sources");
+  store = gtk_tree_view_get_model (GTK_TREE_VIEW (treeview));
+
+  if (!fcitx_selected_im && fcitx_imlist)
+    {
+      index = fcitx_get_selected_im_index (builder);
+      if (index >= 0)
+      {
+        imitem = g_ptr_array_index (fcitx_imlist, index);
+        fcitx_selected_im = g_strdup (imitem->unique_name);
+      }
+    }
+
+  if (get_selected_iter (builder, &model, &iter))
+    path = gtk_tree_model_get_path (model, &iter);
+  else
+    path = NULL;
 
   if (fcitx_imlist)
     {
@@ -151,21 +211,106 @@ fcitx_imlist_changed_cb (FcitxInputMethod *fcitx_im,
     }
   fcitx_imlist = fcitx_input_method_get_imlist (fcitx_im);
 
-  treeview = WID("active_input_sources");
-  store = gtk_tree_view_get_model (GTK_TREE_VIEW (treeview));
-
-  if (get_selected_iter (builder, &model, &iter))
-    path = gtk_tree_model_get_path (model, &iter);
-  else
-    path = NULL;
-
   gtk_list_store_clear (GTK_LIST_STORE (store));
   populate_with_active_sources (GTK_LIST_STORE (store));
 
+  if (fcitx_imlist && fcitx_selected_im)
+    {
+      foreach_context.treeview = GTK_TREE_VIEW (treeview);
+      foreach_context.unique_name = fcitx_selected_im;
+      gtk_tree_model_foreach (model,
+                              fcitx_tree_modle_foreach_cb,
+                              (gpointer) &foreach_context);
+      g_clear_pointer (&fcitx_selected_im, g_free);
+    }
+
   if (path)
     {
-      set_selected_path (builder, path);
+      if (!fcitx_imlist || fcitx_get_selected_im_index (builder) < 0)
+        set_selected_path (builder, path);
       gtk_tree_path_free (path);
+    }
+}
+
+static gint
+fcitx_get_im_index (GtkTreeModel *model,
+                    GtkTreeIter  *iter)
+{
+  gchar *id;
+  gchar *type;
+  gint index = -1;
+  if (!fcitx_imlist)
+    return -1;
+  gtk_tree_model_get (model, iter, TYPE_COLUMN, &type, ID_COLUMN, &id, -1);
+  if (!g_str_equal (type, INPUT_SOURCE_TYPE_FCITX))
+    goto exit;
+  index = atoi (id);
+  if (index >= fcitx_imlist->len)
+    {
+      g_warning ("Index of selected IM out of range, the index is %u", index);
+      index = -1;
+    }
+ exit:
+  g_free (id);
+  g_free (type);
+  return index;
+}
+
+static gint
+fcitx_get_selected_im_index (GtkBuilder *builder)
+{
+  GtkTreeModel *model;
+  GtkTreeIter iter;
+  if (get_selected_iter (builder, &model, &iter) == FALSE)
+    return -1;
+  return fcitx_get_im_index (model, &iter);
+}
+
+static void
+fcitx_move_selected_im_up (GtkBuilder *builder)
+{
+  gint index = fcitx_get_selected_im_index (builder);
+  gint i;
+  if (index < 0)
+    return;
+  for (i = index - 1; i >= 0; i--)
+    {
+      FcitxIMItem *imitem = g_ptr_array_index (fcitx_imlist, i);
+      if (imitem->enable)
+        break;
+    }
+  if (i >= 0)
+    {
+      g_clear_pointer (&fcitx_selected_im, g_free);
+      FcitxIMItem *temp = g_ptr_array_index (fcitx_imlist, index);
+      fcitx_selected_im = g_strdup (temp->unique_name);
+      g_ptr_array_index (fcitx_imlist, index) = g_ptr_array_index (fcitx_imlist, i);
+      g_ptr_array_index (fcitx_imlist, i) = temp;
+      fcitx_input_method_set_imlist (fcitx_im, fcitx_imlist);
+    }
+}
+
+static void
+fcitx_move_selected_im_down (GtkBuilder *builder)
+{
+  gint index = fcitx_get_selected_im_index (builder);
+  gint i;
+  if (index < 0)
+    return;
+  for (i = index + 1; i < fcitx_imlist->len; i++)
+    {
+      FcitxIMItem *imitem = g_ptr_array_index (fcitx_imlist, i);
+      if (imitem->enable)
+        break;
+    }
+  if (i < fcitx_imlist->len)
+    {
+      g_clear_pointer (&fcitx_selected_im, g_free);
+      FcitxIMItem *temp = g_ptr_array_index (fcitx_imlist, index);
+      fcitx_selected_im = g_strdup (temp->unique_name);
+      g_ptr_array_index (fcitx_imlist, index) = g_ptr_array_index (fcitx_imlist, i);
+      g_ptr_array_index (fcitx_imlist, i) = temp;
+      fcitx_input_method_set_imlist (fcitx_im, fcitx_imlist);
     }
 }
 #endif  /* HAVE_FCITX */
@@ -498,6 +643,11 @@ update_configuration (GtkTreeModel *model)
   guint old_current_index;
   guint index;
 
+#ifdef HAVE_FCITX
+  if (fcitx_is_connected ())
+    return;
+#endif
+
   old_sources = g_settings_get_value (input_sources_settings, KEY_INPUT_SOURCES);
   old_current_index = g_settings_get_uint (input_sources_settings, KEY_CURRENT_INPUT_SOURCE);
   g_variant_get_child (old_sources,
@@ -753,6 +903,14 @@ move_selected_input_up (GtkButton *button, gpointer data)
 
   g_debug ("move selected input source up");
 
+#ifdef HAVE_FCITX
+  if (fcitx_is_connected ())
+    {
+      fcitx_move_selected_im_up (builder);
+      return;
+    }
+#endif
+
   if (!get_selected_iter (builder, &model, &iter))
     return;
 
@@ -780,6 +938,14 @@ move_selected_input_down (GtkButton *button, gpointer data)
   GtkTreePath *path;
 
   g_debug ("move selected input source down");
+
+#ifdef HAVE_FCITX
+  if (fcitx_is_connected ())
+    {
+      fcitx_move_selected_im_down (builder);
+      return;
+    }
+#endif
 
   if (!get_selected_iter (builder, &model, &iter))
     return;
