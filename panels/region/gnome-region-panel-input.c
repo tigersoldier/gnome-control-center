@@ -34,6 +34,11 @@
 #include <ibus.h>
 #endif
 
+#ifdef HAVE_FCITX
+#include <fcitx-gclient/fcitxinputmethod.h>
+#include <fcitx-utils/utils.h>
+#endif
+
 #include "gdm-languages.h"
 #include "gnome-region-panel-input.h"
 
@@ -72,11 +77,98 @@ static const gchar *supported_ibus_engines[] = {
 };
 #endif  /* HAVE_IBUS */
 
+#ifdef HAVE_FCITX
+#define INPUT_SOURCE_TYPE_FCITX "fcitx"
+
+static FcitxInputMethod *fcitx_im = NULL;
+static GPtrArray *fcitx_imlist = NULL;
+
+static void       clear_fcitx                  (void);
+static void       fcitx_imlist_changed_cb      (FcitxInputMethod *fcitx_im,
+                                                GtkBuilder       *builder);
+static gboolean   fcitx_is_connected           (void);
+#endif  /* HAVE_FCITX */
+
+static gboolean   get_selected_iter            (GtkBuilder       *builder,
+                                                GtkTreeModel    **model,
+                                                GtkTreeIter      *iter);
+static void       set_selected_path            (GtkBuilder       *builder,
+                                                GtkTreePath      *path);
+static void       populate_with_active_sources (GtkListStore     *store);
 static GtkWidget *input_chooser_new          (GtkWindow     *main_window,
                                               GtkListStore  *active_sources);
 static gboolean   input_chooser_get_selected (GtkWidget     *chooser,
                                               GtkTreeModel **model,
                                               GtkTreeIter   *iter);
+
+#ifdef HAVE_FCITX
+static void
+clear_fcitx (void)
+{
+  if (fcitx_im)
+    {
+      g_signal_handlers_disconnect_by_func (fcitx_im,
+                                            "imlist-changed",
+                                            G_CALLBACK (fcitx_imlist_changed_cb));
+      g_clear_object (&fcitx_im);
+    }
+  if (fcitx_imlist)
+    {
+      g_ptr_array_set_free_func (fcitx_imlist, fcitx_im_item_free);
+      g_ptr_array_free (fcitx_imlist, TRUE);
+      fcitx_imlist = NULL;
+    }
+}
+
+static gboolean
+fcitx_is_connected (void)
+{
+  gchar *name_owner;
+  gboolean connected;
+  if (!FCITX_IS_INPUT_METHOD (fcitx_im))
+    return FALSE;
+  name_owner = g_dbus_proxy_get_name_owner (G_DBUS_PROXY (fcitx_im));
+  connected = (name_owner != NULL);
+  if (name_owner)
+    g_free (name_owner);
+  return connected;
+}
+
+static void
+fcitx_imlist_changed_cb (FcitxInputMethod *fcitx_im,
+                         GtkBuilder       *builder)
+{
+  GtkWidget *treeview;
+  GtkTreeModel *store;
+  GtkTreePath *path;
+  GtkTreeIter iter;
+  GtkTreeModel *model;
+
+  if (fcitx_imlist)
+    {
+      g_ptr_array_set_free_func (fcitx_imlist, fcitx_im_item_free);
+      g_ptr_array_free (fcitx_imlist, TRUE);
+    }
+  fcitx_imlist = fcitx_input_method_get_imlist (fcitx_im);
+
+  treeview = WID("active_input_sources");
+  store = gtk_tree_view_get_model (GTK_TREE_VIEW (treeview));
+
+  if (get_selected_iter (builder, &model, &iter))
+    path = gtk_tree_model_get_path (model, &iter);
+  else
+    path = NULL;
+
+  gtk_list_store_clear (GTK_LIST_STORE (store));
+  populate_with_active_sources (GTK_LIST_STORE (store));
+
+  if (path)
+    {
+      set_selected_path (builder, path);
+      gtk_tree_path_free (path);
+    }
+}
+#endif  /* HAVE_FCITX */
 
 #ifdef HAVE_IBUS
 static void
@@ -311,6 +403,31 @@ populate_with_active_sources (GtkListStore *store)
   gchar *display_name;
   GDesktopAppInfo *app_info;
   GtkTreeIter tree_iter;
+
+#ifdef HAVE_FCITX
+  if (fcitx_imlist)
+    {
+      guint i;
+      for (i = 0; i < fcitx_imlist->len; i++)
+      {
+        FcitxIMItem *imitem;
+        gchar *id;
+        imitem = g_ptr_array_index (fcitx_imlist, i);
+        if (!imitem->enable)
+          continue;
+        id = g_strdup_printf ("%u", i);
+        gtk_list_store_append (store, &tree_iter);
+        gtk_list_store_set (store, &tree_iter,
+                            NAME_COLUMN, imitem->name,
+                            TYPE_COLUMN, INPUT_SOURCE_TYPE_FCITX,
+                            ID_COLUMN, id,
+                            SETUP_COLUMN, NULL,
+                            -1);
+        g_free (id);
+      }
+      return;
+    }
+#endif  /* HAVE_FCITX */
 
   sources = g_settings_get_value (input_sources_settings, KEY_INPUT_SOURCES);
 
@@ -820,6 +937,11 @@ input_sources_changed (GSettings  *settings,
   GtkTreeIter iter;
   GtkTreeModel *model;
 
+#ifdef HAVE_FCITX
+  if (fcitx_is_connected ())
+    return;
+#endif
+
   treeview = WID("active_input_sources");
   store = gtk_tree_view_get_model (GTK_TREE_VIEW (treeview));
 
@@ -929,6 +1051,35 @@ setup_input_tabs (GtkBuilder    *builder,
       g_object_weak_ref (G_OBJECT (builder), (GWeakNotify) clear_ibus, NULL);
     }
   maybe_start_ibus ();
+#endif
+
+#ifdef HAVE_FCITX
+  {
+    GError *error = NULL;
+    if (!fcitx_im)
+      {
+        fcitx_im = fcitx_input_method_new (G_BUS_TYPE_SESSION,
+                                           G_DBUS_PROXY_FLAGS_NONE,
+                                           fcitx_utils_get_display_number (),
+                                           NULL,
+                                           &error);
+        if (!fcitx_im)
+          {
+            g_warning ("Failed to create FcitxInputMethod instance: %s",
+                       error->message);
+            g_error_free (error);
+          }
+        else
+          {
+            g_signal_connect (G_OBJECT (fcitx_im),
+                              "imlist-changed",
+                              G_CALLBACK (fcitx_imlist_changed_cb),
+                              builder);
+            fcitx_imlist = fcitx_input_method_get_imlist (fcitx_im);
+            g_object_weak_ref (G_OBJECT (builder), (GWeakNotify) clear_fcitx, NULL);
+          }
+      }
+  }
 #endif
 
   populate_with_active_sources (store);

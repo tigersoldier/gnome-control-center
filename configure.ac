@@ -78,6 +78,23 @@ else
         IBUS_MODULE=
 fi
 
+# Fcitx support
+FCITX_REQUIRED_VERSION=4.2.5
+
+AC_ARG_ENABLE(fcitx,
+        AS_HELP_STRING([--disable-fcitx],
+                       [Disable Fcitx support]),
+        enable_fcitx=$enableval,
+        enable_fcitx=yes)
+
+if test "x$enable_fcitx" = "xyes"; then
+        FCITX_MODULE="fcitx-gclient >= $FCITX_REQUIRED_VERSION
+                      fcitx-utils >= $FCITX_REQUIRED_VERSION"
+        AC_DEFINE(HAVE_FCITX, 1, [Defined if Fcitx support is enabled])
+else
+        FCITX_MODULE=""
+fi
+
 dnl ==============================================
 dnl Check that we meet the  dependencies
 dnl ==============================================
@@ -133,7 +150,8 @@ PKG_CHECK_MODULES(PRINTERS_PANEL, $COMMON_MODULES
 PKG_CHECK_MODULES(REGION_PANEL, $COMMON_MODULES
                   polkit-gobject-1 >= $POLKIT_REQUIRED_VERSION
                   gnome-desktop-3.0 >= $GNOME_DESKTOP_REQUIRED_VERSION
-                  $IBUS_MODULE)
+                  $IBUS_MODULE
+                  $FCITX_MODULE)
 PKG_CHECK_MODULES(SCREEN_PANEL, $COMMON_MODULES)
 PKG_CHECK_MODULES(SOUND_PANEL, $COMMON_MODULES libxml-2.0
                   libcanberra-gtk3 >= $CANBERRA_REQUIRED_VERSION
@@ -521,5 +539,10 @@ if test "x$enable_ibus" == "xyes"; then
 	AC_MSG_NOTICE([** IBus (Region panel IBus support)])
 else
 	AC_MSG_NOTICE([   Region panel IBus support disabled])
+fi
+if test "x$enable_fcitx" == "xyes"; then
+	AC_MSG_NOTICE([** Fcitx (Region panel Fcitx support)])
+else
+	AC_MSG_NOTICE([   Region panel Fcitx support disabled])
 fi
 AC_MSG_NOTICE([End options])
