@@ -41,6 +41,12 @@ libregion_la_SOURCES +=	\
 	gnome-input-source-ibus.c
 endif
 
+if BUILD_FCITX
+libregion_la_SOURCES +=	\
+	gnome-input-source-fcitx.h \
+	gnome-input-source-fcitx.c
+endif
+
 libregion_la_LIBADD = $(PANEL_LIBS) $(REGION_PANEL_LIBS) $(builddir)/../common/liblanguage.la
 
 libregion_la_LDFLAGS = $(PANEL_LDFLAGS)
