@@ -89,6 +89,7 @@ if test "x$enable_ibus" = "xyes" ; then
 else
         IBUS_MODULE=
 fi
+AM_CONDITIONAL(BUILD_IBUS, [test x$enable_ibus = xyes])
 
 dnl ==============================================
 dnl Check that we meet the  dependencies

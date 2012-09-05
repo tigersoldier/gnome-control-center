@@ -35,6 +35,12 @@ libregion_la_SOURCES =	\
 	gnome-input-source-multiprovider.c \
 	$(NULL)
 
+if BUILD_IBUS
+libregion_la_SOURCES +=	\
+	gnome-input-source-ibus.h \
+	gnome-input-source-ibus.c
+endif
+
 libregion_la_LIBADD = $(PANEL_LIBS) $(REGION_PANEL_LIBS) $(builddir)/../common/liblanguage.la
 
 libregion_la_LDFLAGS = $(PANEL_LDFLAGS)
