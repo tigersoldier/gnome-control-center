@@ -5,8 +5,8 @@
     <columns>
       <!-- display name -->
       <column type="gchararray"/>
-      <!-- input source type -->
-      <column type="gchararray"/>
+      <!-- input source object -->
+      <column type="GObject"/>
       <!-- type specific identifier -->
       <column type="gchararray"/>
     </columns>
