@@ -91,6 +91,7 @@ cc_power_panel_dispose (GObject *object)
     }
   if (priv->cancellable != NULL)
     {
+      g_cancellable_cancel (priv->cancellable);
       g_object_unref (priv->cancellable);
       priv->cancellable = NULL;
     }
@@ -111,14 +112,6 @@ cc_power_panel_dispose (GObject *object)
     }
 
   G_OBJECT_CLASS (cc_power_panel_parent_class)->dispose (object);
-}
-
-static void
-cc_power_panel_finalize (GObject *object)
-{
-  CcPowerPanelPrivate *priv = CC_POWER_PANEL (object)->priv;
-  g_cancellable_cancel (priv->cancellable);
-  G_OBJECT_CLASS (cc_power_panel_parent_class)->finalize (object);
 }
 
 static void
@@ -145,7 +138,6 @@ cc_power_panel_class_init (CcPowerPanelClass *klass)
   object_class->get_property = cc_power_panel_get_property;
   object_class->set_property = cc_power_panel_set_property;
   object_class->dispose = cc_power_panel_dispose;
-  object_class->finalize = cc_power_panel_finalize;
 
   panel_class->get_help_uri = cc_power_panel_get_help_uri;
 }
@@ -639,8 +631,8 @@ add_device_secondary (CcPowerPanel *panel,
 static void
 get_devices_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
-  CcPowerPanel *panel = CC_POWER_PANEL (user_data);
-  CcPowerPanelPrivate *priv = panel->priv;
+  CcPowerPanel *panel;
+  CcPowerPanelPrivate *priv;
   gboolean got_primary = FALSE;
   gboolean ups_as_primary_device = FALSE;
   GError *error = NULL;
@@ -655,6 +647,16 @@ get_devices_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
   GVariant *untuple;
   UpDeviceKind kind;
   UpDeviceState state;
+
+  result = g_dbus_proxy_call_finish (G_DBUS_PROXY (source_object), res, &error);
+  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    {
+      g_error_free (error);
+      return; /* Must exit before accessing freed memory */
+    }
+
+  panel = CC_POWER_PANEL (user_data);
+  priv = panel->priv;
 
   /* empty the secondary box */
   widget = GTK_WIDGET (gtk_builder_get_object (priv->builder,
@@ -672,7 +674,6 @@ get_devices_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
                                                "box_secondary"));
   gtk_widget_hide (widget);
 
-  result = g_dbus_proxy_call_finish (G_DBUS_PROXY (source_object), res, &error);
   if (result == NULL)
     {
       g_printerr ("Error getting devices: %s\n", error->message);
@@ -771,15 +772,21 @@ static void
 got_power_proxy_cb (GObject *source_object, GAsyncResult *res, gpointer user_data)
 {
   GError *error = NULL;
-  CcPowerPanelPrivate *priv = CC_POWER_PANEL (user_data)->priv;
+  GDBusProxy *proxy;
+  CcPowerPanelPrivate *priv;
 
-  priv->proxy = g_dbus_proxy_new_for_bus_finish (res, &error);
-  if (priv->proxy == NULL)
+  proxy = g_dbus_proxy_new_for_bus_finish (res, &error);
+  if (proxy == NULL)
     {
       g_printerr ("Error creating proxy: %s\n", error->message);
       g_error_free (error);
       return;
     }
+
+  /* Access user_data after checking for error because user_data might be
+     disposed already. */
+  priv = CC_POWER_PANEL (user_data)->priv;
+  priv->proxy = proxy;
 
   /* we want to change the primary device changes */
   g_signal_connect (priv->proxy,
@@ -986,6 +993,7 @@ cc_power_panel_init (CcPowerPanel *self)
   GError     *error;
   GtkWidget  *widget;
   gint        value;
+  char       *text;
 
   self->priv = POWER_PANEL_PRIVATE (self);
 
@@ -1063,8 +1071,11 @@ cc_power_panel_init (CcPowerPanel *self)
   widget = GTK_WIDGET (gtk_builder_get_object (self->priv->builder,
                                                "label_screen_settings"));
   /* TRANSLATORS: this is a link to the "Brightness and Lock" control center panel */
-  gtk_label_set_markup (GTK_LABEL (widget),
-                        "<span size=\"small\">Tip: <a href=\"screen\">screen brightness</a> affects how much power is used</span>");
+  text = g_strdup_printf ("<span size=\"small\">%s</span>",
+                          _("Tip: <a href=\"screen\">screen brightness</a> affects how much power is used"));
+  gtk_label_set_markup (GTK_LABEL (widget), text);
+  g_free (text);
+
   g_signal_connect (widget, "activate-link",
                     G_CALLBACK (activate_link_cb),
                     self);

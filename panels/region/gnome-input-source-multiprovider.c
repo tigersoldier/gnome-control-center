@@ -44,6 +44,13 @@ struct _GnomeInputSourceMultiproviderPrivate {
   GtkSettings *settings;
 };
 
+enum {
+  SIGNAL_PROVIDER_CHANGED = 0,
+  LAST_SIGNAL,
+};
+
+static guint signals[LAST_SIGNAL] = { 0 };
+
 G_DEFINE_TYPE (GnomeInputSourceMultiprovider, gnome_input_source_multiprovider, GNOME_TYPE_INPUT_SOURCE_PROVIDER)
 
 static gboolean multiprovider_get_activated (GnomeInputSourceProvider *provider);
@@ -66,7 +73,7 @@ static void provider_deactivated_cb (GnomeInputSourceProvider *provider,
 static void multiprovider_set_slave (GnomeInputSourceMultiprovider *multiprovider,
                                      GnomeInputSourceProvider *slave);
 static void multiprovider_choose_slave (GnomeInputSourceMultiprovider *multiprovider);
-static void im_module_setting_changed (GtkSettings *settings, 
+static void im_module_setting_changed (GtkSettings *settings,
                                        GParamSpec *pspec,
                                        GnomeInputSourceMultiprovider *multiprovider);
 
@@ -92,7 +99,18 @@ gnome_input_source_multiprovider_class_init (GnomeInputSourceMultiproviderClass 
   provider_class->set_active_sources = multiprovider_set_active_sources;
   provider_class->get_setting = multiprovider_get_setting;
   provider_class->show_settings_dialog = multiprovider_show_settings_dialog;
-  g_type_class_add_private (klass, sizeof (GnomeInputSourceMultiproviderPrivate));
+
+  signals[SIGNAL_PROVIDER_CHANGED] =
+    g_signal_new ("provider-changed",
+                  G_TYPE_FROM_CLASS (klass),
+                  G_SIGNAL_RUN_LAST,
+                  0,
+                  NULL, NULL,
+                  g_cclosure_marshal_VOID__VOID,
+                  G_TYPE_NONE, 0);
+
+  g_type_class_add_private (klass,
+                            sizeof (GnomeInputSourceMultiproviderPrivate));
 }
 
 static void
@@ -204,7 +222,7 @@ multiprovider_choose_slave (GnomeInputSourceMultiprovider *multiprovider)
   GList *activated_providers, *tmp;
   const gchar *global_immodule;
   const gchar * const * supported_immodules;
-  
+
   priv = GNOME_INPUT_SOURCE_MULTIPROVIDER_PRIVATE (multiprovider);
   activated_providers = g_hash_table_get_keys (priv->activated_provider_table);
   if (activated_providers)
@@ -253,7 +271,7 @@ im_module_setting_changed_timeout (GnomeInputSourceMultiprovider *multiprovider)
 }
 
 static void
-im_module_setting_changed (GtkSettings *settings, 
+im_module_setting_changed (GtkSettings *settings,
                            GParamSpec *pspec,
                            GnomeInputSourceMultiprovider *multiprovider)
 {
@@ -350,6 +368,9 @@ multiprovider_set_slave (GnomeInputSourceMultiprovider *multiprovider,
       slave_immodule_name_changed_cb (multiprovider,
                                       NULL,
                                       slave);
+
+      g_signal_emit (multiprovider, signals[SIGNAL_PROVIDER_CHANGED], 0);
+      slave_immodule_name_changed_cb (multiprovider, NULL, slave);
       slave_sources_changed_cb (multiprovider, slave);
       slave_settings_changed_cb (multiprovider, slave);
     }

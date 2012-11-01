@@ -36,6 +36,12 @@ libnetwork_la_SOURCES =					\
 	panel-cell-renderer-security.h			\
 	panel-cell-renderer-signal.c			\
 	panel-cell-renderer-signal.h			\
+	panel-cell-renderer-separator.c			\
+	panel-cell-renderer-separator.h			\
+	panel-cell-renderer-text.c			\
+	panel-cell-renderer-text.h			\
+	panel-cell-renderer-pixbuf.c			\
+	panel-cell-renderer-pixbuf.h			\
 	network-dialogs.c				\
 	network-dialogs.h				\
 	cc-network-panel.c				\

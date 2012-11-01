@@ -68,7 +68,9 @@ struct _GnomeControlCenterPrivate
   GtkWidget  *main_vbox;
   GtkWidget  *scrolled_window;
   GtkWidget  *search_scrolled;
+  GtkWidget  *current_panel_box;
   GtkWidget  *current_panel;
+  char       *current_panel_id;
   GtkWidget  *window;
   GtkWidget  *search_entry;
   GtkWidget  *lock_button;
@@ -183,7 +185,6 @@ activate_panel (GnomeControlCenter *shell,
   GnomeControlCenterPrivate *priv = shell->priv;
   GType panel_type = G_TYPE_INVALID;
   GList *panels, *l;
-  GtkWidget *panel;
   GtkWidget *box;
   const gchar *icon_name;
 
@@ -218,17 +219,17 @@ activate_panel (GnomeControlCenter *shell,
     }
 
   /* create the panel plugin */
-  panel = g_object_new (panel_type, "shell", shell, "argv", argv, NULL);
-  cc_shell_set_active_panel (CC_SHELL (shell), CC_PANEL (panel));
-  gtk_widget_show (panel);
+  priv->current_panel = g_object_new (panel_type, "shell", shell, "argv", argv, NULL);
+  cc_shell_set_active_panel (CC_SHELL (shell), CC_PANEL (priv->current_panel));
+  gtk_widget_show (priv->current_panel);
 
   gtk_lock_button_set_permission (GTK_LOCK_BUTTON (priv->lock_button),
-                                  cc_panel_get_permission (CC_PANEL (panel)));
+                                  cc_panel_get_permission (CC_PANEL (priv->current_panel)));
 
   box = gtk_alignment_new (0, 0, 1, 1);
   gtk_alignment_set_padding (GTK_ALIGNMENT (box), 6, 6, 6, 6);
 
-  gtk_container_add (GTK_CONTAINER (box), panel);
+  gtk_container_add (GTK_CONTAINER (box), priv->current_panel);
 
   gtk_widget_set_name (box, id);
   notebook_add_page (priv->notebook, box);
@@ -244,7 +245,7 @@ activate_panel (GnomeControlCenter *shell,
   gtk_window_set_default_icon_name (icon_name);
   gtk_window_set_icon_name (GTK_WINDOW (priv->window), icon_name);
 
-  priv->current_panel = box;
+  priv->current_panel_box = box;
 
   return TRUE;
 }
@@ -273,9 +274,11 @@ shell_show_overview_page (GnomeControlCenter *center)
 
   notebook_select_page (priv->notebook, priv->scrolled_window);
 
-  if (priv->current_panel)
-    notebook_remove_page (priv->notebook, priv->current_panel);
+  if (priv->current_panel_box)
+    notebook_remove_page (priv->notebook, priv->current_panel_box);
   priv->current_panel = NULL;
+  priv->current_panel_box = NULL;
+  g_clear_pointer (&priv->current_panel_id, g_free);
 
   /* clear the search text */
   g_free (priv->filter_string);
@@ -956,6 +959,15 @@ _shell_set_active_panel_from_id (CcShell      *shell,
   GnomeControlCenterPrivate *priv = GNOME_CONTROL_CENTER (shell)->priv;
   GtkWidget *old_panel;
 
+  /* When loading the same panel again, just set the argv */
+  if (g_strcmp0 (priv->current_panel_id, start_id) == 0)
+    {
+      g_object_set (G_OBJECT (priv->current_panel), "argv", argv, NULL);
+      return TRUE;
+    }
+
+  g_clear_pointer (&priv->current_panel_id, g_free);
+
   /* clear any custom widgets */
   _shell_remove_all_custom_widgets (priv);
 
@@ -1004,11 +1016,16 @@ _shell_set_active_panel_from_id (CcShell      *shell,
   else if (activate_panel (GNOME_CONTROL_CENTER (shell), start_id, argv, desktop,
                            name, gicon) == FALSE)
     {
-      old_panel = priv->current_panel;
-      priv->current_panel = NULL;
+      /* Failed to activate the panel for some reason */
+      old_panel = priv->current_panel_box;
+      priv->current_panel_box = NULL;
       notebook_select_page (priv->notebook, priv->scrolled_window);
       if (old_panel)
         notebook_remove_page (priv->notebook, old_panel);
+    }
+  else
+    {
+      priv->current_panel_id = g_strdup (start_id);
     }
 
   g_free (name);
@@ -1056,6 +1073,8 @@ static void
 gnome_control_center_dispose (GObject *object)
 {
   GnomeControlCenterPrivate *priv = GNOME_CONTROL_CENTER (object)->priv;
+
+  g_free (priv->current_panel_id);
 
   if (priv->custom_widgets)
     {

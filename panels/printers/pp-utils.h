@@ -4,7 +4,7 @@
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
+ * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -22,8 +22,19 @@
 #define __PP_UTILS_H__
 
 #include <gtk/gtk.h>
+#include <cups/cups.h>
+
+#define ALLOWED_CHARACTERS "abcdefghijklmnopqrtsuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+
+#define MECHANISM_BUS "org.opensuse.CupsPkHelper.Mechanism"
+
+#define SCP_BUS   "org.fedoraproject.Config.Printing"
+#define SCP_PATH  "/org/fedoraproject/Config/Printing"
+#define SCP_IFACE "org.fedoraproject.Config.Printing"
 
 G_BEGIN_DECLS
+
+typedef void (*UserResponseCallback) (GtkDialog *dialog, gint response_id, gpointer user_data);
 
 /*
  * Match level of PPD driver.
@@ -35,6 +46,13 @@ enum
   PPD_CLOSE_MATCH,
   PPD_EXACT_MATCH,
   PPD_EXACT_CMD_MATCH
+};
+
+enum
+{
+  ACQUISITION_METHOD_DEFAULT_CUPS_SERVER = 0,
+  ACQUISITION_METHOD_REMOTE_CUPS_SERVER,
+  ACQUISITION_METHOD_SNMP
 };
 
 typedef struct
@@ -61,19 +79,8 @@ typedef struct
 gchar      *get_tag_value (const gchar *tag_string,
                            const gchar *tag_name);
 
-PPDName    *get_ppd_name (gchar *device_id,
-                          gchar *device_make_and_model,
-                          gchar *device_uri);
-
 char       *get_dest_attr (const char *dest_name,
                            const char *attr);
-
-ipp_t      *execute_maintenance_command (const char *printer_name,
-                                         const char *command,
-                                         const char *title);
-
-int         ccGetAllowedUsers (gchar      ***allowed_users,
-                               const char   *printer_name);
 
 gchar      *get_ppd_attribute (const gchar *ppd_file_name,
                                const gchar *attribute_name);
@@ -211,6 +218,8 @@ typedef void (*PGPCallback) (const gchar *ppd_filename,
                              gpointer     user_data);
 
 void        printer_get_ppd_async (const gchar *printer_name,
+                                   const gchar *host_name,
+                                   gint         port,
                                    PGPCallback  callback,
                                    gpointer     user_data);
 
@@ -257,6 +266,32 @@ void job_set_hold_until_async (gint          job_id,
                                GCancellable *cancellable,
                                JSHUCallback  callback,
                                gpointer      user_data);
+typedef struct{
+  gchar *device_class;
+  gchar *device_id;
+  gchar *device_info;
+  gchar *device_make_and_model;
+  gchar *device_uri;
+  gchar *device_location;
+  gchar *device_name;
+  gchar *device_ppd;
+  gchar *host_name;
+  gint   host_port;
+  gint   acquisition_method;
+} PpPrintDevice;
+
+void        pp_print_device_free (PpPrintDevice *device);
+
+const gchar *get_paper_size_from_locale (void);
+
+typedef void (*GCDCallback) (GList          *devices,
+                             gboolean        finished,
+                             gboolean        cancelled,
+                             gpointer        user_data);
+
+void        get_cups_devices_async (GCancellable *cancellable,
+                                    GCDCallback   callback,
+                                    gpointer      user_data);
 
 G_END_DECLS
 

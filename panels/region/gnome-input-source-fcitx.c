@@ -132,7 +132,8 @@ fcitx_finalize (GObject *object)
   g_clear_object (&priv->kbd);
   if (priv->imlist)
     {
-      g_ptr_array_set_free_func (priv->imlist, fcitx_im_item_free);
+      g_ptr_array_set_free_func (priv->imlist,
+                                 (GDestroyNotify) fcitx_im_item_free);
       g_ptr_array_free (priv->imlist, TRUE);
       priv->imlist = NULL;
     }
@@ -216,7 +217,7 @@ fcitx_get_active_sources (GnomeInputSourceProvider *provider)
       imitem = g_ptr_array_index (priv->imlist, i);
       if (!imitem->enable)
         continue;
-      active_sources = g_list_prepend (active_sources, 
+      active_sources = g_list_prepend (active_sources,
                                        fcitx_source_new (GNOME_INPUT_SOURCE_FCITX (provider),
                                                          imitem));
     }
@@ -261,7 +262,7 @@ fcitx_set_active_sources (GnomeInputSourceProvider *provider,
     return;
   imitem_table = g_hash_table_new (g_str_hash, g_str_equal);
   active_source_table = g_hash_table_new (g_str_hash, g_str_equal);
-  new_imlist = g_ptr_array_new_with_free_func (fcitx_im_item_free);
+  new_imlist = g_ptr_array_new_with_free_func ((GDestroyNotify) fcitx_im_item_free);
   for (i = 0; i < priv->imlist->len; i++)
     {
       imitem = g_ptr_array_index (priv->imlist, i);
@@ -336,7 +337,8 @@ fcitx_imlist_changed_cb (FcitxInputMethod *fcitx_im,
   priv = GNOME_INPUT_SOURCE_FCITX_PRIVATE (fcitx);
   if (priv->imlist)
     {
-      g_ptr_array_set_free_func (priv->imlist, fcitx_im_item_free);
+      g_ptr_array_set_free_func (priv->imlist,
+                                 (GDestroyNotify) fcitx_im_item_free);
       g_ptr_array_free (priv->imlist, TRUE);
     }
   priv->imlist = fcitx_input_method_get_imlist (fcitx_im);

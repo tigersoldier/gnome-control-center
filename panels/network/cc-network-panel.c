@@ -60,6 +60,7 @@ struct _CcNetworkPanelPrivate
 {
         GCancellable     *cancellable;
         GtkBuilder       *builder;
+        GtkWidget        *treeview;
         NMClient         *client;
         NMRemoteSettings *remote_settings;
         gboolean          updating_device;
@@ -89,6 +90,7 @@ enum {
 };
 
 static NetObject *find_in_model_by_id (CcNetworkPanel *panel, const gchar *id);
+static void handle_argv (CcNetworkPanel *panel);
 
 static void
 cc_network_panel_get_property (GObject    *object,
@@ -121,6 +123,31 @@ cmdline_operation_from_string (const gchar *string)
 }
 
 static void
+reset_command_line_args (CcNetworkPanel *self)
+{
+	self->priv->arg_operation = OPERATION_NULL;
+	g_clear_pointer (&self->priv->arg_device, g_free);
+	g_clear_pointer (&self->priv->arg_access_point, g_free);
+}
+
+static gboolean
+verify_argv (CcNetworkPanel *self,
+	     const char    **args)
+{
+	switch (self->priv->arg_operation) {
+	case OPERATION_CONNECT_MOBILE:
+	case OPERATION_CONNECT_8021X:
+	case OPERATION_SHOW_DEVICE:
+		if (self->priv->arg_device == NULL) {
+			g_warning ("Operation %s requires an object path", args[0]);
+		        return FALSE;
+                }
+	default:
+		return TRUE;
+	}
+}
+
+static void
 cc_network_panel_set_property (GObject      *object,
                                guint         property_id,
                                const GValue *value,
@@ -133,11 +160,7 @@ cc_network_panel_set_property (GObject      *object,
         case PROP_ARGV: {
                 gchar **args;
 
-                priv->arg_operation = OPERATION_NULL;
-                g_free (priv->arg_device);
-                priv->arg_device = NULL;
-                g_free (priv->arg_access_point);
-                priv->arg_access_point = NULL;
+                reset_command_line_args (self);
 
                 args = g_value_get_boxed (value);
 
@@ -150,6 +173,14 @@ cc_network_panel_set_property (GObject      *object,
                                 priv->arg_device = g_strdup (args[1]);
                         if (args[0] && args[1] && args[2])
                                 priv->arg_access_point = g_strdup (args[2]);
+
+                        if (verify_argv (self, (const char **) args) == FALSE) {
+                                reset_command_line_args (self);
+                                return;
+                        }
+
+                        g_debug ("Calling handle_argv() after setting property");
+                        handle_argv (self);
                 }
                 break;
         }
@@ -191,9 +222,9 @@ cc_network_panel_dispose (GObject *object)
 static void
 cc_network_panel_finalize (GObject *object)
 {
-        CcNetworkPanelPrivate *priv = CC_NETWORK_PANEL (object)->priv;
-        g_free (priv->arg_device);
-        g_free (priv->arg_access_point);
+        CcNetworkPanel *panel = CC_NETWORK_PANEL (object);
+
+        reset_command_line_args (panel);
 
         G_OBJECT_CLASS (cc_network_panel_parent_class)->finalize (object);
 }
@@ -225,15 +256,12 @@ cc_network_panel_class_init (CcNetworkPanelClass *klass)
 static NetObject *
 get_selected_object (CcNetworkPanel *panel)
 {
-        GtkWidget *widget;
         GtkTreeSelection *selection;
         GtkTreeModel *model;
         GtkTreeIter iter;
         NetObject *object = NULL;
 
-        widget = GTK_WIDGET (gtk_builder_get_object (panel->priv->builder,
-                                                     "treeview_devices"));
-        selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (widget));
+        selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (panel->priv->treeview));
         if (!gtk_tree_selection_get_selected (selection, &model, &iter)) {
                 return NULL;
         }
@@ -249,12 +277,9 @@ static void
 select_first_device (CcNetworkPanel *panel)
 {
         GtkTreePath *path;
-        GtkWidget *widget;
         GtkTreeSelection *selection;
 
-        widget = GTK_WIDGET (gtk_builder_get_object (panel->priv->builder,
-                                                     "treeview_devices"));
-        selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (widget));
+        selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (panel->priv->treeview));
 
         /* select the first device */
         path = gtk_tree_path_new_from_string ("0");
@@ -265,12 +290,9 @@ select_first_device (CcNetworkPanel *panel)
 static void
 select_tree_iter (CcNetworkPanel *panel, GtkTreeIter *iter)
 {
-        GtkTreeView *widget;
         GtkTreeSelection *selection;
 
-        widget = GTK_TREE_VIEW (gtk_builder_get_object (panel->priv->builder,
-                                                        "treeview_devices"));
-        selection = gtk_tree_view_get_selection (widget);
+        selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (panel->priv->treeview));
 
         gtk_tree_selection_select_iter (selection, iter);
 }
@@ -282,12 +304,9 @@ object_removed_cb (NetObject *object, CcNetworkPanel *panel)
         NetObject *object_tmp;
         GtkTreeIter iter;
         GtkTreeModel *model;
-        GtkWidget *widget;
         GtkTreeSelection *selection;
 
-        widget = GTK_WIDGET (gtk_builder_get_object (panel->priv->builder,
-                                                     "treeview_devices"));
-        selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (widget));
+        selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (panel->priv->treeview));
 
         /* remove device from model */
         model = GTK_TREE_MODEL (gtk_builder_get_object (panel->priv->builder,
@@ -364,6 +383,93 @@ panel_refresh_killswitch_visibility (CcNetworkPanel *panel)
 }
 
 static gboolean
+handle_argv_for_device (CcNetworkPanel *panel,
+			NMDevice       *device,
+			GtkTreeIter    *iter)
+{
+        CcNetworkPanelPrivate *priv = panel->priv;
+        NMDeviceType type;
+
+        if (priv->arg_operation == OPERATION_NULL)
+                return TRUE;
+
+        type = nm_device_get_device_type (device);
+
+        if (type == NM_DEVICE_TYPE_WIFI &&
+            (priv->arg_operation == OPERATION_CREATE_WIFI ||
+             priv->arg_operation == OPERATION_CONNECT_HIDDEN)) {
+                g_debug ("Selecting wifi device");
+                select_tree_iter (panel, iter);
+
+                if (priv->arg_operation == OPERATION_CREATE_WIFI)
+                        cc_network_panel_create_wifi_network (panel, priv->client, priv->remote_settings);
+                else
+                        cc_network_panel_connect_to_hidden_network (panel, priv->client, priv->remote_settings);
+
+                reset_command_line_args (panel); /* done */
+                return TRUE;
+        } else if (g_strcmp0 (nm_object_get_path (NM_OBJECT (device)), priv->arg_device) == 0) {
+                if (priv->arg_operation == OPERATION_CONNECT_MOBILE) {
+                        cc_network_panel_connect_to_3g_network (panel, priv->client, priv->remote_settings, device);
+
+                        reset_command_line_args (panel); /* done */
+                        select_tree_iter (panel, iter);
+                        return TRUE;
+                } else if (priv->arg_operation == OPERATION_CONNECT_8021X) {
+                        cc_network_panel_connect_to_8021x_network (panel, priv->client, priv->remote_settings, device, priv->arg_access_point);
+                        reset_command_line_args (panel); /* done */
+                        select_tree_iter (panel, iter);
+                        return TRUE;
+                }
+                else if (priv->arg_operation == OPERATION_SHOW_DEVICE) {
+                        select_tree_iter (panel, iter);
+                        reset_command_line_args (panel); /* done */
+                        return TRUE;
+                }
+        }
+
+        return FALSE;
+}
+
+static void
+handle_argv (CcNetworkPanel *panel)
+{
+        GtkTreeModel *model;
+        GtkTreeIter iter;
+        gboolean ret;
+
+        if (panel->priv->arg_operation == OPERATION_NULL)
+                return;
+
+        model = GTK_TREE_MODEL (gtk_builder_get_object (panel->priv->builder,
+                                                        "liststore_devices"));
+        ret = gtk_tree_model_get_iter_first (model, &iter);
+        while (ret) {
+                GObject *object_tmp;
+                NMDevice *device;
+                gboolean done = FALSE;
+
+                gtk_tree_model_get (model, &iter,
+                                    PANEL_DEVICES_COLUMN_OBJECT, &object_tmp,
+                                    -1);
+                if (g_object_class_find_property (G_OBJECT_GET_CLASS (object_tmp), "nm-device") != NULL) {
+                        g_object_get (object_tmp, "nm-device", &device, NULL);
+                        done = handle_argv_for_device (panel, device, &iter);
+                        g_object_unref (device);
+                }
+
+                g_object_unref (object_tmp);
+
+                if (done)
+                        return;
+
+                ret = gtk_tree_model_iter_next (model, &iter);
+        }
+
+        g_debug ("Could not handle argv operation, no matching device yet?");
+}
+
+static gboolean
 panel_add_device (CcNetworkPanel *panel, NMDevice *device)
 {
         const gchar *title;
@@ -382,8 +488,8 @@ panel_add_device (CcNetworkPanel *panel, NMDevice *device)
 
         type = nm_device_get_device_type (device);
 
-        g_debug ("device %s type %i",
-                 nm_device_get_udi (device), type);
+        g_debug ("device %s type %i path %s",
+                 nm_device_get_udi (device), type, nm_object_get_path (NM_OBJECT (device)));
 
         /* map the NMDeviceType to the GType */
         switch (type) {
@@ -437,41 +543,6 @@ panel_add_device (CcNetworkPanel *panel, NMDevice *device)
                             PANEL_DEVICES_COLUMN_OBJECT, net_device,
                             -1);
 
-        if (priv->arg_operation != OPERATION_NULL) {
-                if (type == NM_DEVICE_TYPE_WIFI &&
-                    (priv->arg_operation == OPERATION_CREATE_WIFI ||
-                     priv->arg_operation == OPERATION_CONNECT_HIDDEN)) {
-                        g_debug ("Selecting wifi device");
-                        select_tree_iter (panel, &iter);
-
-                        if (priv->arg_operation == OPERATION_CREATE_WIFI)
-                                cc_network_panel_create_wifi_network (panel, priv->client, priv->remote_settings);
-                        else
-                                cc_network_panel_connect_to_hidden_network (panel, priv->client, priv->remote_settings);
-
-                        priv->arg_operation = OPERATION_NULL; /* done */
-                        return TRUE;
-                } else if (g_strcmp0 (nm_object_get_path (NM_OBJECT (device)), priv->arg_device) == 0) {
-                        if (priv->arg_operation == OPERATION_CONNECT_MOBILE) {
-                                cc_network_panel_connect_to_3g_network (panel, priv->client, priv->remote_settings, device);
-
-                                priv->arg_operation = OPERATION_NULL; /* done */
-                                select_tree_iter (panel, &iter);
-                                return TRUE;
-                        } else if (priv->arg_operation == OPERATION_CONNECT_8021X
-                                   || priv->arg_operation == OPERATION_SHOW_DEVICE) {
-                                select_tree_iter (panel, &iter);
-
-                                /* 802.11 wireless stuff must be handled in add_access_point, but
-                                   we still select the right page here, whereas if we're just showing
-                                   the device, we're done right away */
-                                if (priv->arg_operation == OPERATION_SHOW_DEVICE)
-                                        priv->arg_operation = OPERATION_NULL;
-                                return TRUE;
-                        }
-                }
-        }
-
 out:
         return FALSE;
 }
@@ -519,7 +590,7 @@ panel_add_devices_columns (CcNetworkPanel *panel, GtkTreeView *treeview)
         g_object_set (renderer, "stock-size", gtk_icon_size_from_name ("cc-sidebar-list"), NULL);
         gtk_cell_renderer_set_padding (renderer, 4, 4);
 
-        column = gtk_tree_view_column_new_with_attributes ("", renderer,
+        column = gtk_tree_view_column_new_with_attributes ("icon", renderer,
                                                            "icon-name", PANEL_DEVICES_COLUMN_ICON,
                                                            NULL);
         gtk_tree_view_append_column (treeview, column);
@@ -528,8 +599,9 @@ panel_add_devices_columns (CcNetworkPanel *panel, GtkTreeView *treeview)
         renderer = gtk_cell_renderer_text_new ();
         g_object_set (renderer,
                       "wrap-mode", PANGO_WRAP_WORD,
+                      "ellipsize", PANGO_ELLIPSIZE_END,
                       NULL);
-        column = gtk_tree_view_column_new_with_attributes ("", renderer,
+        column = gtk_tree_view_column_new_with_attributes ("title", renderer,
                                                            "markup", PANEL_DEVICES_COLUMN_TITLE,
                                                            NULL);
         gtk_tree_view_column_set_sort_column_id (column, PANEL_DEVICES_COLUMN_SORT);
@@ -557,8 +629,6 @@ nm_devices_treeview_clicked_cb (GtkTreeSelection *selection, CcNetworkPanel *pan
         guint i = 0;
         NetObject *object = NULL;
 
-        widget = GTK_WIDGET (gtk_builder_get_object (priv->builder,
-                                                     "treeview_devices"));
         if (!gtk_tree_selection_get_selected (selection, &model, &iter)) {
                 g_debug ("no row selected");
                 goto out;
@@ -722,6 +792,9 @@ out:
                 /* select the first device */
                 select_first_device (panel);
         }
+
+        g_debug ("Calling handle_argv() after cold-plugging devices");
+        handle_argv (panel);
 }
 
 static NetObject *
@@ -1042,16 +1115,17 @@ cc_network_panel_init (CcNetworkPanel *panel)
 
         panel->priv->cancellable = g_cancellable_new ();
 
-        widget = GTK_WIDGET (gtk_builder_get_object (panel->priv->builder,
-                                                     "treeview_devices"));
-        panel_add_devices_columns (panel, GTK_TREE_VIEW (widget));
-        selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (widget));
+        panel->priv->treeview = GTK_WIDGET (gtk_builder_get_object (panel->priv->builder,
+                                                                    "treeview_devices"));
+        panel_add_devices_columns (panel, GTK_TREE_VIEW (panel->priv->treeview));
+        selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (panel->priv->treeview));
         gtk_tree_selection_set_mode (selection, GTK_SELECTION_BROWSE);
         g_signal_connect (selection, "changed",
                           G_CALLBACK (nm_devices_treeview_clicked_cb), panel);
 
         widget = GTK_WIDGET (gtk_builder_get_object (panel->priv->builder,
                                                      "devices_scrolledwindow"));
+        gtk_widget_set_size_request (widget, 200, -1);
         context = gtk_widget_get_style_context (widget);
         gtk_style_context_set_junction_sides (context, GTK_JUNCTION_BOTTOM);
 

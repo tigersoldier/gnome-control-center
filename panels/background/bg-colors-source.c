@@ -43,18 +43,21 @@ struct {
   int orientation;
   const char *pcolor;
 } items[] = {
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#8f5902" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#770000" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#ad7fa8" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#edd400" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#67915c" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#f57900" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#6aa978" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#57667c" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#727e6f" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#d59659" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#86af8f" },
-  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#828b98" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#db5d33" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#008094" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#5d479d" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#ab2876" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#fad166" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#437740" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#d272c4" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#ed9116" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#ff89a9" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#7a8aa2" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#888888" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#475b52" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#425265" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#7a634b" },
+  { G_DESKTOP_BACKGROUND_SHADING_SOLID, -1, "#000000" },
 };
 
 static void
@@ -83,7 +86,7 @@ bg_colors_source_init (BgColorsSource *self)
       /* It does have a URI, it's "none" */
 
       g_object_set (G_OBJECT (item),
-                    "uri", "file:///" DATADIR "/gnome-shell/theme/noise-texture.png",
+                    "uri", "file:///" DATADIR "/gnome-control-center/pixmaps/noise-texture-light.png",
 		    "primary-color", items[i].pcolor,
 		    "secondary-color", items[i].pcolor,
 		    "shading", items[i].type,

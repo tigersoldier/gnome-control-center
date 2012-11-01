@@ -250,29 +250,29 @@ xkb_set_active_sources (GnomeInputSourceProvider *provider,
   const gchar *id;
   const gchar *type;
   guint old_current_index;
+  guint old_n_sources;
   guint index;
   GnomeXkbSource *source;
 
   priv = GNOME_INPUT_SOURCE_XKB_PRIVATE (provider);
 
   old_sources = g_settings_get_value (priv->settings, KEY_INPUT_SOURCES);
-  old_current_index = g_settings_get_uint (priv->settings, KEY_CURRENT_INPUT_SOURCE);
-  g_variant_get_child (old_sources,
-                       old_current_index,
-                       "(&s&s)",
-                       &old_current_type,
-                       &old_current_id);
-  if (g_variant_n_children (old_sources) < 1)
+  old_current_index = g_settings_get_uint (priv->settings,
+                                           KEY_CURRENT_INPUT_SOURCE);
+  old_n_sources = g_variant_n_children (old_sources);
+
+  if (old_n_sources > 0 && old_current_index < old_n_sources)
     {
-      g_warning ("No input source configured, resetting");
-      g_settings_reset (priv->settings, KEY_INPUT_SOURCES);
-      goto exit;
+      g_variant_get_child (old_sources,
+                           old_current_index,
+                           "(&s&s)",
+                           &old_current_type,
+                           &old_current_id);
     }
-  if (old_current_index >= g_variant_n_children (old_sources))
+  else
     {
-      g_settings_set_uint (priv->settings,
-                           KEY_CURRENT_INPUT_SOURCE,
-                           g_variant_n_children (old_sources) - 1);
+      old_current_type = "";
+      old_current_id = "";
     }
 
   g_variant_builder_init (&builder, G_VARIANT_TYPE ("a(ss)"));
@@ -297,10 +297,12 @@ xkb_set_active_sources (GnomeInputSourceProvider *provider,
       index += 1;
     }
 
-  g_settings_set_value (priv->settings, KEY_INPUT_SOURCES, g_variant_builder_end (&builder));
+  g_settings_set_value (priv->settings,
+                        KEY_INPUT_SOURCES,
+                        g_variant_builder_end (&builder));
 
- exit:
   g_settings_apply (priv->settings);
+
   g_variant_unref (old_sources);
 }
 
@@ -357,7 +359,7 @@ static void
 xkb_show_settings_dialog (GnomeInputSourceProvider *provider,
                           guint setting_id)
 {
-  g_spawn_command_line_async ("gnome-control-center keyboard shortcut", NULL);
+  g_spawn_command_line_async ("gnome-control-center keyboard shortcuts Typing", NULL);
 }
 
 void

@@ -1,4 +1,183 @@
 ===========================
+Version 3.6.2 (2012-22-10)
+===========================
+
+Background:
+- Fix crash when exiting panel too quickly
+
+Network:
+- Fix 8021x connections
+
+Screen:
+- Avoid accessing destroyed panel
+
+User accounts:
+- Complete discover on failure
+- Recognize that some kerberos domains cannot be joined
+- Remove the realmd version check
+- Set timeouts on all realmd interface proxies
+- Don't have domains twice in the drop down
+- Fix wrong sensitivity of the autologin combo
+
+===========================
+Version 3.6.1 (2012-08-10)
+===========================
+
+Shell:
+- Fix entering the same panel twice
+
+Region & Language:
+- Remove the unused "Remove" button
+- Reduce the number of required m17n desktop files
+- Repopulate the input sources when IBus becomes available again
+- Add support for inscript2 and Marathi phonetic input sources
+
+Network:
+- Fix arrow direction in RTL languages
+- Don't resize the panel or the Wi-Fi list
+- Top alogn the back button in the Wi-Fi panel
+- Fix parenting problems when spawing a network dialogue
+- Don't try to activate out-of-range connections
+- Fix WPA Enterprise connections not working
+- Use a regular button for "Connect to Hidden Network"
+
+Online Accounts:
+- Fix a warning on exit
+
+Background:
+- Fix multi-monitor handling
+- Use a lighter texture for solid colours
+
+Date & Time:
+- Update the current time when we change the timezone
+
+User Accounts:
+- Fix the autologin icon not being recoloured
+
+Mouse:
+- Fix mouse test area not being in the correct position in some cases
+
+Printers:
+- Fix wrong icon being used in the search entry
+
+Sound:
+- Fix input level bar direction in RTL languages
+
+===========================
+Version 3.6.0 (2012-25-09)
+===========================
+
+Shell:
+- Fix broken panels when launching the same one twice
+
+Network:
+- Make connecting to Enterprise WPA Wi-Fi networks work again
+
+User Accounts:
+- Don't ask for the old password when none is set
+
+Region:
+- Jump directly to the correct shortcuts section when
+  following the link
+
+===========================
+Version 3.5.92 (2012-17-09)
+===========================
+
+- Ensure that all sources are GPLv2+ instead
+  of a mix of GPLv2+ and GPLv3+
+- Set blank window titles for a number of dialogues
+- Fix accessible labels for switches
+
+Bluetooth:
+- Fix setting up dial-up networking for phones
+
+Display:
+- Fix mouse events not working in preview
+
+Background:
+- Use a more varied colour palette
+- Fix the small size of the "changes throughout the day" emblem
+
+Network:
+- Mark all rows representing saved connections as such
+- Make the 'Settings...' buttons work properly
+- Handle disconnected APs better
+- Show a "Connect" button for disconnected APs
+- Show 'Last used' item for non-active, in-range access points.
+- Improve the Wi-Fi list appearance
+
+User Accounts:
+- Use GStreamer 1.0
+- Fix "enterpise" typo
+
+Power:
+- Fix a wrong use of GCancellable that could lead to crashes
+
+Region:
+- Use consistent strings for layout/engine names
+- Handle empty layout sources, especially when adding a new one
+- Handle input sources in the system tab
+- Fix layout problem on the system tab
+- Update IBus engines whitelist
+
+Printers:
+- Fix building against CUPS 1.6
+
+Universal Access:
+- Fix whitespace in the zoom options dialogue
+
+Screen & Brightness:
+- Make notification checkbox focusable
+
+Wacom:
+- Fix link to docs
+
+===========================
+Version 3.5.91 (2012-04-09)
+===========================
+
+Printers:
+- Redesign the "new printer" dialogue
+
+Date & Time:
+- Make map look unsensitive when the panel is locked
+
+Region & Language:
+- Add Russian and Egyptian Arabic as common languages
+- Don't use IBus in fallback mode
+- Honor the 'show-all-sources' setting
+- Don't block getting the IBus engines
+- Expand the default list of input sources
+
+User Accounts:
+- Simplify some drawing code
+- Fix login keyring password not getting updated
+- Fix match icon not updating in some cases
+
+Mouse:
+- New testing area
+- Remove italics from test page
+- Fix left/right mouse-handedness radio buttons in RTL languages
+
+Common:
+- Fix memory leaks in language sorting
+- Fix too big editable labels
+
+Info:
+- Add PolicyKit rules for hostname setting
+- Set related mime types when changing preferred apps
+
+Display:
+- Fix possible warning on exit
+- Make 'Mirrored Displays' string consistent with GnomeRRLabeler
+
+Network:
+- Ignore unrecognised device types
+- Fix wired and mobile activations
+- Don't try to activate slave connections
+
+===========================
 Version 3.5.90 (2012-21-08)
 ===========================
 

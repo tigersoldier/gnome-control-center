@@ -61,6 +61,7 @@ struct _CcBackgroundPanelPrivate
   CcBackgroundItem *current_background;
 
   GCancellable *copy_cancellable;
+  GCancellable *capture_cancellable;
 
   GtkWidget *spinner;
 
@@ -95,6 +96,15 @@ cc_background_panel_dispose (GObject *object)
 
       g_object_unref (priv->copy_cancellable);
       priv->copy_cancellable = NULL;
+    }
+
+  if (priv->capture_cancellable)
+    {
+      /* cancel screenshot operations */
+      g_cancellable_cancel (priv->capture_cancellable);
+
+      g_object_unref (priv->capture_cancellable);
+      priv->capture_cancellable = NULL;
     }
 
   g_clear_object (&priv->thumb_factory);
@@ -227,12 +237,14 @@ on_screenshot_finished (GObject *source,
   CcBackgroundPanelPrivate *priv = panel->priv;
   GError *error;
   GdkRectangle rect;
+  GdkRectangle workarea_rect;
   GtkWidget *widget;
   GdkPixbuf *pixbuf;
   cairo_surface_t *surface;
   cairo_t *cr;
   int width;
   int height;
+  int primary;
 
   error = NULL;
   g_dbus_connection_call_finish (panel->priv->connection,
@@ -240,6 +252,10 @@ on_screenshot_finished (GObject *source,
                                  &error);
 
   if (error != NULL) {
+    if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+      g_error_free (error);
+      return;
+    }
     g_debug ("Unable to get screenshot: %s",
              error->message);
     g_error_free (error);
@@ -266,12 +282,14 @@ on_screenshot_finished (GObject *source,
   g_object_unref (pixbuf);
 
   /* clear the workarea */
-   widget = WID ("background-desktop-drawingarea");
-  gdk_screen_get_monitor_workarea (gtk_widget_get_screen (widget), 0, &rect);
+  widget = WID ("background-desktop-drawingarea");
+  primary = gdk_screen_get_primary_monitor (gtk_widget_get_screen (widget));
+  gdk_screen_get_monitor_geometry (gtk_widget_get_screen (widget), primary, &rect);
+  gdk_screen_get_monitor_workarea (gtk_widget_get_screen (widget), primary, &workarea_rect);
 
   cairo_save (cr);
   cairo_set_operator (cr, CAIRO_OPERATOR_CLEAR);
-  cairo_rectangle (cr, rect.x, rect.y, rect.width, rect.height);
+  cairo_rectangle (cr, workarea_rect.x - rect.x, workarea_rect.y - rect.y, workarea_rect.width, workarea_rect.height);
   cairo_fill (cr);
   cairo_restore (cr);
 
@@ -300,6 +318,9 @@ get_screenshot_async (CcBackgroundPanel *panel,
   const gchar *method_name;
   GVariant *method_params;
 
+  g_debug ("Trying to capture rectangle %dx%d (at %d,%d)",
+           rectangle->width, rectangle->height, rectangle->x, rectangle->y);
+
   path = g_build_filename (g_get_user_cache_dir (), "gnome-control-center", NULL);
   g_mkdir_with_parents (path, 0700);
 
@@ -325,7 +346,7 @@ get_screenshot_async (CcBackgroundPanel *panel,
                           NULL,
                           G_DBUS_CALL_FLAGS_NONE,
                           -1,
-                          NULL,
+                          panel->priv->capture_cancellable,
                           on_screenshot_finished,
                           panel);
 }
@@ -340,8 +361,10 @@ on_preview_draw (GtkWidget         *widget,
       && panel->priv->screenshot_path == NULL)
     {
       GdkRectangle rect;
+      int primary;
 
-      gdk_screen_get_monitor_geometry (gtk_widget_get_screen (widget), 0, &rect);
+      primary = gdk_screen_get_primary_monitor (gtk_widget_get_screen (widget));
+      gdk_screen_get_monitor_geometry (gtk_widget_get_screen (widget), primary, &rect);
       get_screenshot_async (panel, &rect);
     }
   else
@@ -446,9 +469,11 @@ copy_finished_cb (GObject      *source_object,
 
   if (!g_file_copy_finish (G_FILE (source_object), result, &err))
     {
-      if (err->code != G_IO_ERROR_CANCELLED)
-        g_warning ("Failed to copy image to cache location: %s", err->message);
-
+      if (g_error_matches (err, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+        g_error_free (err);
+        return;
+      }
+      g_warning ("Failed to copy image to cache location: %s", err->message);
       g_error_free (err);
     }
   item = g_object_get_data (source_object, "item");
@@ -698,6 +723,7 @@ cc_background_panel_init (CcBackgroundPanel *self)
                     self);
 
   priv->copy_cancellable = g_cancellable_new ();
+  priv->capture_cancellable = g_cancellable_new ();
 
   priv->thumb_factory = gnome_desktop_thumbnail_factory_new (GNOME_DESKTOP_THUMBNAIL_SIZE_LARGE);
 

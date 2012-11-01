@@ -27,6 +27,7 @@
 #include <nm-setting-cdma.h>
 #include <nm-setting-serial.h>
 #include <nm-device-modem.h>
+#include <nm-device-wifi.h>
 
 #include "network-dialogs.h"
 #include "nm-wireless-dialog.h"
@@ -217,6 +218,8 @@ show_wireless_dialog (CcNetworkPanel   *panel,
         GtkWidget *toplevel = cc_shell_get_toplevel (cc_panel_get_shell (CC_PANEL (panel)));
         WirelessDialogClosure *closure;
 
+        g_debug ("About to parent and show a network dialog");
+
         g_assert (gtk_widget_is_toplevel (toplevel));
         g_object_set (G_OBJECT (dialog),
                       "modal", TRUE,
@@ -230,7 +233,9 @@ show_wireless_dialog (CcNetworkPanel   *panel,
                                G_CALLBACK (wireless_dialog_response_cb),
                                closure, wireless_dialog_closure_closure_notify, 0);
 
-        gtk_widget_show (dialog);
+        g_object_bind_property (G_OBJECT (toplevel), "visible",
+                                G_OBJECT (dialog), "visible",
+                                G_BINDING_SYNC_CREATE);
 }
 
 void
@@ -249,6 +254,7 @@ cc_network_panel_connect_to_hidden_network (CcNetworkPanel   *panel,
                                             NMClient         *client,
                                             NMRemoteSettings *settings)
 {
+        g_debug ("connect to hidden wifi");
         show_wireless_dialog (panel, client, settings,
                               nma_wireless_dialog_new_for_other (client, settings));
 }
@@ -258,7 +264,7 @@ cc_network_panel_connect_to_8021x_network (CcNetworkPanel   *panel,
                                            NMClient         *client,
                                            NMRemoteSettings *settings,
                                            NMDevice         *device,
-                                           NMAccessPoint    *ap)
+                                           const gchar      *arg_access_point)
 {
 	NMConnection *connection;
 	NMSettingConnection *s_con;
@@ -268,6 +274,14 @@ cc_network_panel_connect_to_8021x_network (CcNetworkPanel   *panel,
 	NM80211ApSecurityFlags wpa_flags, rsn_flags;
 	GtkWidget *dialog;
 	char *uuid;
+        NMAccessPoint *ap;
+
+        g_debug ("connect to 8021x wifi");
+        ap = nm_device_wifi_get_access_point_by_path (NM_DEVICE_WIFI (device), arg_access_point);
+        if (ap == NULL) {
+                g_warning ("didn't find access point with path %s", arg_access_point);
+                return;
+        }
 
         /* If the AP is WPA[2]-Enterprise then we need to set up a minimal 802.1x
 	 * setting and ask the user for more information.
@@ -459,6 +473,25 @@ done:
         nma_mobile_wizard_destroy (wizard);
 }
 
+static void
+toplevel_shown (GtkWindow       *toplevel,
+                GParamSpec      *pspec,
+                NMAMobileWizard *wizard)
+{
+        gboolean visible = FALSE;
+
+        g_object_get (G_OBJECT (toplevel), "visible", &visible, NULL);
+        if (visible)
+                nma_mobile_wizard_present (wizard);
+}
+
+static gboolean
+show_wizard_idle_cb (NMAMobileWizard *wizard)
+{
+        nma_mobile_wizard_present (wizard);
+        return FALSE;
+}
+
 void
 cc_network_panel_connect_to_3g_network (CcNetworkPanel   *panel,
                                         NMClient         *client,
@@ -469,7 +502,9 @@ cc_network_panel_connect_to_3g_network (CcNetworkPanel   *panel,
         MobileDialogClosure *closure;
         NMAMobileWizard *wizard;
 	NMDeviceModemCapabilities caps;
+        gboolean visible = FALSE;
 
+        g_debug ("connect to 3g");
         if (!NM_IS_DEVICE_MODEM (device)) {
                 g_warning ("Network panel loaded with connect-3g but the selected device"
                            " is not a modem");
@@ -503,5 +538,13 @@ cc_network_panel_connect_to_3g_network (CcNetworkPanel   *panel,
                 return;
         }
 
-        nma_mobile_wizard_present (wizard);
+        g_object_get (G_OBJECT (toplevel), "visible", &visible, NULL);
+        if (visible) {
+                g_debug ("Scheduling showing the Mobile wizard");
+                g_idle_add ((GSourceFunc) show_wizard_idle_cb, wizard);
+        } else {
+                g_debug ("Will show wizard a bit later, toplevel is not visible");
+                g_signal_connect (G_OBJECT (toplevel), "notify::visible",
+                                  G_CALLBACK (toplevel_shown), wizard);
+        }
 }

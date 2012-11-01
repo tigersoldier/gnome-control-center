@@ -1,4 +1,4 @@
-m4_define([gnome_control_center_version], 3.5.90)
+m4_define([gnome_control_center_version], 3.6.2)
 AC_INIT([gnome-control-center], [gnome_control_center_version],
         [http://bugzilla.gnome.org/enter_bug.cgi?product=gnome-control-center])
 
@@ -115,17 +115,17 @@ dnl Check that we meet the  dependencies
 dnl ==============================================
 
 GLIB_REQUIRED_VERSION=2.31.0
-GTK_REQUIRED_VERSION=3.5.8
+GTK_REQUIRED_VERSION=3.5.13
 PA_REQUIRED_VERSION=2.0
 CANBERRA_REQUIRED_VERSION=0.13
 GDKPIXBUF_REQUIRED_VERSION=2.23.0
 POLKIT_REQUIRED_VERSION=0.103
-GSD_REQUIRED_VERSION=3.5.2
+GSD_REQUIRED_VERSION=3.6.0
 NETWORK_MANAGER_REQUIRED_VERSION=0.8.992
 LIBNOTIFY_REQUIRED_VERSION=0.7.3
-GNOME_DESKTOP_REQUIRED_VERSION=3.5.6
-SCHEMAS_REQUIRED_VERSION=3.5.5
-LIBWACOM_REQUIRED_VERSION=0.5
+GNOME_DESKTOP_REQUIRED_VERSION=3.5.91
+SCHEMAS_REQUIRED_VERSION=3.5.91
+LIBWACOM_REQUIRED_VERSION=0.6
 CLUTTER_REQUIRED_VERSION=1.11.3
 GOA_REQUIRED_VERSION=3.5.90
 
@@ -240,7 +240,7 @@ AC_ARG_WITH([cheese],
             with_cheese=auto)
 
 if test x"$with_cheese" != x"no" ; then
-   PKG_CHECK_MODULES(CHEESE, gstreamer-0.10 cheese-gtk >= 3.3.5 cheese clutter-gtk-1.0, [have_cheese=yes], [have_cheese=no])
+   PKG_CHECK_MODULES(CHEESE, gstreamer-1.0 cheese-gtk >= 3.5.91 cheese clutter-gtk-1.0, [have_cheese=yes], [have_cheese=no])
    if test x${have_cheese} = xyes; then
      AC_DEFINE(HAVE_CHEESE, 1, [Define to 1 to enable cheese webcam support])
    fi

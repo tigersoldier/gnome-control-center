@@ -4,7 +4,7 @@
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
+ * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -573,7 +573,7 @@ show_user (UmUser *user, UmUserPanelPrivate *d)
         GtkWidget *widget;
         GtkTreeModel *model;
         GtkTreeIter iter;
-        gboolean show;
+        gboolean show, enable;
 
         pixbuf = um_user_render_icon (user, FALSE, 48);
         image = get_widget (d, "user-icon-image");
@@ -593,13 +593,16 @@ show_user (UmUser *user, UmUserPanelPrivate *d)
 
         widget = get_widget (d, "account-password-button");
         um_editable_button_set_text (UM_EDITABLE_BUTTON (widget), get_password_mode_text (user));
+        enable = um_user_is_local_account (user);
+        gtk_widget_set_sensitive (widget, enable);
 
         widget = get_widget (d, "autologin-switch");
         g_signal_handlers_block_by_func (widget, autologin_changed, d);
         gtk_switch_set_active (GTK_SWITCH (widget), um_user_get_automatic_login (user));
         g_signal_handlers_unblock_by_func (widget, autologin_changed, d);
 
-        gtk_widget_set_sensitive (widget, !um_user_get_locked (user));
+        if (um_user_get_locked (user))
+                gtk_widget_set_sensitive (widget, FALSE);
 
         widget = get_widget (d, "account-language-combo");
         model = um_editable_combo_get_model (UM_EDITABLE_COMBO (widget));
@@ -1206,6 +1209,7 @@ setup_main_window (UmUserPanelPrivate *d)
         gtk_cell_layout_add_attribute (GTK_CELL_LAYOUT (column), cell, "markup", TITLE_COL);
         gtk_cell_layout_add_attribute (GTK_CELL_LAYOUT (column), cell, "visible", HEADING_ROW_COL);
         cell = gtk_cell_renderer_pixbuf_new ();
+        g_object_set (cell, "follow-state", TRUE, NULL);
         gtk_tree_view_column_pack_start (column, cell, FALSE);
         gtk_cell_layout_add_attribute (GTK_CELL_LAYOUT (column), cell, "visible", USER_ROW_COL);
         gtk_tree_view_column_set_cell_data_func (column,

@@ -4,7 +4,7 @@
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
+ * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -658,18 +658,21 @@ um_password_dialog_set_user (UmPasswordDialog *um,
                 gtk_entry_set_text (GTK_ENTRY (um->normal_hint_entry), "");
                 gtk_entry_set_text (GTK_ENTRY (um->old_password_entry), "");
                 gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (um->show_password_button), FALSE);
-                if (um_user_get_uid (um->user) == getuid()) {
+                if (um_user_get_uid (um->user) == getuid () &&
+                    um_user_get_password_mode (um->user) == UM_PASSWORD_MODE_REGULAR) {
                         gtk_widget_show (um->old_password_label);
                         gtk_widget_show (um->old_password_entry);
-                        if (um->passwd_handler != NULL)
-                                passwd_destroy (um->passwd_handler);
-                        um->passwd_handler = passwd_init ();
                         um->old_password_ok = FALSE;
                 }
                 else {
                         gtk_widget_hide (um->old_password_label);
                         gtk_widget_hide (um->old_password_entry);
                         um->old_password_ok = TRUE;
+                }
+                if (um_user_get_uid (um->user) == getuid()) {
+                        if (um->passwd_handler != NULL)
+                                passwd_destroy (um->passwd_handler);
+                        um->passwd_handler = passwd_init ();
                 }
         }
 

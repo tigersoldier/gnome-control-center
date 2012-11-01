@@ -44,17 +44,16 @@ enum {
 };
 
 static GnomeInputSourceProvider *provider = NULL;
+static GtkWidget *input_chooser = NULL; /* weak pointer */
 
-static GtkWidget *input_chooser_new          (GtkWindow     *main_window,
-                                              GtkListStore  *active_sources);
+static GtkWidget *input_chooser_new          (GtkWindow     *main_window);
 static gboolean   input_chooser_get_selected (GtkWidget     *chooser,
                                               GtkTreeModel **model,
                                               GtkTreeIter   *iter);
 static GtkTreeModel *tree_view_get_actual_model (GtkTreeView *tv);
 
 static void
-populate_model (GtkListStore *store,
-                GtkListStore *active_sources_store)
+populate_model (GtkListStore *store)
 {
   GtkTreeIter iter;
   GList *inactive_sources, *tmp;
@@ -70,6 +69,23 @@ populate_model (GtkListStore *store,
                           -1);
     }
   g_list_free_full (inactive_sources, g_object_unref);
+}
+
+static void
+input_chooser_repopulate (void)
+{
+  GtkBuilder *builder;
+  GtkListStore *model;
+
+  if (!input_chooser)
+    return;
+
+  builder = g_object_get_data (G_OBJECT (input_chooser), "builder");
+  model = GTK_LIST_STORE (gtk_builder_get_object (builder,
+                                                  "input_source_model"));
+
+  gtk_list_store_clear (model);
+  populate_model (model);
 }
 
 static void
@@ -263,16 +279,12 @@ add_input (GtkButton *button, gpointer data)
   GtkBuilder *builder = data;
   GtkWidget *chooser;
   GtkWidget *toplevel;
-  GtkWidget *treeview;
-  GtkListStore *active_sources;
 
   g_debug ("add an input source");
 
   toplevel = gtk_widget_get_toplevel (WID ("region_notebook"));
-  treeview = WID ("active_input_sources");
-  active_sources = GTK_LIST_STORE (tree_view_get_actual_model (GTK_TREE_VIEW (treeview)));
 
-  chooser = input_chooser_new (GTK_WINDOW (toplevel), active_sources);
+  chooser = input_chooser_new (GTK_WINDOW (toplevel));
   g_signal_connect (chooser, "response",
                     G_CALLBACK (chooser_response), builder);
 }
@@ -487,7 +499,7 @@ input_sources_changed (GnomeInputSourceProvider *provider,
 
 static void
 update_shortcut_label (GtkWidget  *widget,
-		       const char *value)
+           const char *value)
 {
   if (value == NULL || *value == '\0')
     {
@@ -602,6 +614,10 @@ setup_input_tabs (GtkBuilder    *builder,
                             "settings-changed",
                             G_CALLBACK (update_shortcuts),
                             builder);
+  g_signal_connect (G_OBJECT (provider),
+                    "provider-changed",
+                    G_CALLBACK (input_chooser_repopulate),
+                    NULL);
 }
 
 static void
@@ -738,8 +754,7 @@ filter_func (GtkTreeModel *model,
 }
 
 static GtkWidget *
-input_chooser_new (GtkWindow    *main_window,
-                   GtkListStore *active_sources)
+input_chooser_new (GtkWindow    *main_window)
 {
   GtkBuilder *builder;
   GtkWidget *chooser;
@@ -756,7 +771,11 @@ input_chooser_new (GtkWindow    *main_window,
                              GNOMECC_UI_DIR "/gnome-region-panel-input-chooser.ui",
                              NULL);
   chooser = WID ("input_source_chooser");
-  g_object_set_data_full (G_OBJECT (chooser), "builder", builder, g_object_unref);
+  input_chooser = chooser;
+  g_object_add_weak_pointer (G_OBJECT (chooser), (gpointer *) &input_chooser);
+  g_object_set_data_full (G_OBJECT (chooser),
+                          "builder", builder,
+                          g_object_unref);
 
   filtered_list = WID ("filtered_input_source_list");
   filter_entry = WID ("input_source_filter");
@@ -788,7 +807,7 @@ input_chooser_new (GtkWindow    *main_window,
   filtered_model = GTK_TREE_MODEL_FILTER (gtk_builder_get_object (builder, "filtered_input_source_model"));
   model = GTK_LIST_STORE (gtk_builder_get_object (builder, "input_source_model"));
 
-  populate_model (model, active_sources);
+  populate_model (model);
 
   gtk_tree_sortable_set_sort_column_id (GTK_TREE_SORTABLE (model),
                                         NAME_COLUMN, GTK_SORT_ASCENDING);

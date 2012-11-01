@@ -4,7 +4,7 @@
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3 of the License, or
+ * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -797,6 +797,8 @@ populate_options (PpOptionsDialog *dialog)
   gtk_widget_show (widget);
 
   printer_get_ppd_async (dialog->printer_name,
+                         NULL,
+                         0,
                          printer_get_ppd_cb,
                          dialog);
 
